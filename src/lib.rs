@@ -1,5 +1,6 @@
 pub mod drawer_array_xyrgb;
 pub mod drawer_mesh;
+pub mod drawer_mesh_tex;
 
 pub fn compile_shaders(
     gl: &glow::Context,

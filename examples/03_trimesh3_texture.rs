@@ -27,34 +27,64 @@ fn main() -> eframe::Result {
 
 struct MyApp {
     /// Behind an `Arc<Mutex<…>>` so we can pass it to [`egui::PaintCallback`] and paint later.
-    drawer: Arc<Mutex<del_glow::drawer_mesh::Drawer>>,
+    drawer: Arc<Mutex<del_glow::drawer_mesh_tex::Drawer>>,
     // mat_modelview: [f32;16],
     mat_projection: [f32; 16],
     trackball: del_geo_core::view_rotation::Trackball,
+    tex_id: Option<glow::NativeTexture>
 }
 
 impl MyApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        let (tri2vtx, vtx2xyz, vtx2uv) = {
+            let mut obj = del_msh_core::io_obj::WavefrontObj::<usize, f32>::new();
+            obj.load("examples/asset/spot_triangulated.obj").unwrap();
+            obj.unified_xyz_uv_as_trimesh()
+        };
+        let pix2rgb = image::ImageReader::open("examples/asset/spot_texture.png").unwrap();
+        println!("{:?}", pix2rgb.format());
+        let pix2rgb = pix2rgb.decode().unwrap().to_rgb8();
+        let pix2rgb = image::imageops::flip_vertical(&pix2rgb);
+        println!("{:?}", pix2rgb.dimensions());
+        let edge2vtx = del_msh_core::edge2vtx::from_triangle_mesh(&tri2vtx, vtx2xyz.len() / 3);
+        // gl start from here
         let gl = cc
             .gl
             .as_ref()
             .expect("You need to run eframe with the glow backend");
-        let mut drawer = del_glow::drawer_mesh::Drawer::new();
+        let mut drawer = del_glow::drawer_mesh_tex::Drawer::new();
         drawer.compile_shader(&gl);
-        let (tri2vtx, vtx2xyz) = {
-            let mut obj = del_msh_core::io_obj::WavefrontObj::<usize, f32>::new();
-            obj.load("examples/asset/spot_triangulated.obj").unwrap();
-            (obj.idx2vtx_xyz, obj.vtx2xyz)
-        };
-        let edge2vtx = del_msh_core::edge2vtx::from_triangle_mesh(&tri2vtx, vtx2xyz.len() / 3);
         drawer.update_vertex(&gl, &vtx2xyz, 3);
-        drawer.add_element(&gl, glow::LINES, &edge2vtx, [0.0, 0.0, 0.0]);
-        drawer.add_element(&gl, glow::TRIANGLES, &tri2vtx, [1.0, 0.0, 0.0]);
+        drawer.set_texture_uv(&gl, &vtx2uv);
+        drawer.add_element(&gl, glow::LINES, &edge2vtx, None);
+        drawer.add_element(&gl, glow::TRIANGLES, &tri2vtx, None);
+        //
+        let id_tex = unsafe {
+            // gl.enable(glow::TEXTURE_2D);
+            // gl.active_texture(glow::TEXTURE0);
+            let id_tex = gl.create_texture().unwrap();
+            gl.bind_texture(glow::TEXTURE_2D, id_tex.try_into().unwrap());
+            // gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+            gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGB as i32,
+                pix2rgb.width() as i32,
+                pix2rgb.height() as i32,
+                0,
+                glow::RGB,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(Some(pix2rgb.as_ref()))
+            );
+            gl.generate_mipmap(glow::TEXTURE_2D);
+            id_tex
+        };
         Self {
             drawer: Arc::new(Mutex::new(drawer)),
             // mat_modelview: del_geo_core::mat4_col_major::from_identity(),
             trackball: del_geo_core::view_rotation::Trackball::default(),
             mat_projection: del_geo_core::mat4_col_major::from_identity(),
+            tex_id: Some(id_tex)
         }
     }
 }
@@ -95,16 +125,25 @@ impl MyApp {
         let rotating_triangle = self.drawer.clone();
         let mat_modelview = self.trackball.mat4_col_major();
         let mat_projection = self.mat_projection;
+        /*
         let z_flip = del_geo_core::mat4_col_major::from_diagonal(1., 1., -1., 1.);
         let mat_projection =
             del_geo_core::mat4_col_major::mult_mat_col_major(&z_flip, &mat_projection);
+         */
+        let tex_id = self.tex_id;
         del_geo_core::view_rotation::Trackball::new();
         let callback = egui::PaintCallback {
             rect,
             callback: std::sync::Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
+                let gl = painter.gl();
+                unsafe {
+                    gl.clear(glow::DEPTH_BUFFER_BIT);
+                    gl.enable(glow::DEPTH_TEST);
+                    gl.bind_texture(glow::TEXTURE_2D, tex_id);
+                }
                 rotating_triangle
                     .lock()
-                    .draw(painter.gl(), &mat_modelview, &mat_projection);
+                    .draw(gl, &mat_modelview, &mat_projection);
             })),
         };
         ui.painter().add(callback);

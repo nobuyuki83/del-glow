@@ -13,7 +13,7 @@ pub struct Drawer {
     program: Option<glow::NativeProgram>,
     pub ndim: usize,
     num_point: usize,
-    vao: Option<glow::NativeVertexArray>,
+    vertex_array: Option<glow::NativeVertexArray>,
     // uniform variables
     loc_texture: Option<glow::NativeUniformLocation>,
     loc_color: Option<glow::NativeUniformLocation>,
@@ -30,7 +30,7 @@ impl Drawer {
             program: None,
             ndim: 0,
             num_point: 0,
-            vao: None,
+            vertex_array: None,
             loc_texture: None,    // -1 is the failure flag
             loc_color: None,      // -1 is the failure flag
             loc_is_texture: None, // -1 is the failure flag
@@ -87,25 +87,22 @@ void main() {
             self.loc_texture = gl.get_uniform_location(program, "myTextureSampler");
             self.loc_color = gl.get_uniform_location(program, "color");
             self.loc_is_texture = gl.get_uniform_location(program, "is_texture");
-            {
-                let mut vao0 = gl.create_vertex_array().unwrap();
-                self.vao = Some(vao0);
-                gl.bind_vertex_array(self.vao);
-            }
+            let vao0 = gl.create_vertex_array().unwrap();
+            self.vertex_array = Some(vao0);
         }
     }
 
-    pub fn add_element<T>(
+    pub fn add_elem2vtx<T>(
         &mut self,
         gl: &glow::Context,
         mode: u32,
-        elem2vtx: &Vec<T>,
+        elem2vtx: &[T],
         color: Option<[f32; 3]>,
     ) where
         T: 'static + Copy + num_traits::AsPrimitive<u32>,
     {
         unsafe {
-            gl.bind_vertex_array(self.vao);
+            gl.bind_vertex_array(self.vertex_array);
             let ebo0 = gl.create_buffer().unwrap();
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo0));
             let elem_vtx0: Vec<u32> = elem2vtx.iter().map(|i| (*i).as_()).collect();
@@ -120,24 +117,27 @@ void main() {
                 ebo: Some(ebo0),
                 color,
             });
+            gl.bind_vertex_array(None);
         }
     }
 
-    pub fn update_vertex(&mut self, gl: &glow::Context, vtx2xyz: &Vec<f32>, ndim: usize) {
+    pub fn update_vtx2xyz(&mut self, gl: &glow::Context, vtx2xyz: &[f32], ndim: usize) {
         self.ndim = ndim;
         self.num_point = vtx2xyz.len() / self.ndim;
         unsafe {
-            gl.bind_vertex_array(self.vao);
+            gl.bind_vertex_array(self.vertex_array);
             //
-            let mut vbo = gl.create_buffer().unwrap();
+            let vbo = gl.create_buffer().unwrap();
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
             gl.buffer_data_u8_slice(
                 glow::ARRAY_BUFFER,
-                bytemuck::cast_slice(&vtx2xyz),
+                bytemuck::cast_slice(vtx2xyz),
                 glow::STATIC_DRAW,
             );
 
-            let pos_attrib = gl.get_attrib_location(self.program.unwrap(), "position").unwrap();
+            let pos_attrib = gl
+                .get_attrib_location(self.program.unwrap(), "position")
+                .unwrap();
             gl.enable_vertex_attrib_array(pos_attrib);
             gl.vertex_attrib_pointer_f32(
                 pos_attrib,
@@ -145,23 +145,25 @@ void main() {
                 glow::FLOAT,
                 false,
                 (self.ndim * std::mem::size_of::<f32>()) as i32,
-                0i32
+                0i32,
             );
+            gl.bind_vertex_array(None);
         }
     }
 
-    pub fn set_texture_uv(&mut self, gl: &glow::Context, vtx2tex: &Vec<f32>) {
+    pub fn set_vtx2uv(&mut self, gl: &glow::Context, vtx2tex: &[f32]) {
         unsafe {
-            gl.bind_vertex_array(self.vao);
-
-            let mut vbo = gl.create_buffer().unwrap();
+            gl.bind_vertex_array(self.vertex_array);
+            let vbo = gl.create_buffer().unwrap();
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
             gl.buffer_data_u8_slice(
                 glow::ARRAY_BUFFER,
                 bytemuck::cast_slice(vtx2tex),
                 glow::STATIC_DRAW,
             );
-            let pos_attrib = gl.get_attrib_location(self.program.unwrap(), "texIn").unwrap();
+            let pos_attrib = gl
+                .get_attrib_location(self.program.unwrap(), "texIn")
+                .unwrap();
             gl.enable_vertex_attrib_array(pos_attrib);
             gl.vertex_attrib_pointer_f32(
                 1,
@@ -169,8 +171,9 @@ void main() {
                 glow::FLOAT,
                 false,
                 (2 * std::mem::size_of::<f32>()) as i32,
-                0
+                0,
             ); // gl24
+            gl.bind_vertex_array(None);
         }
     }
 
@@ -182,8 +185,8 @@ void main() {
             -mp0[10], mp0[11], mp0[12], mp0[13], -mp0[14], mp0[15],
         ];
         unsafe {
+            gl.bind_vertex_array(self.vertex_array);
             gl.use_program(self.program);
-            gl.bind_vertex_array(self.vao);
             for ebo in &self.ebos {
                 match ebo.color {
                     Some(color) => {
@@ -194,16 +197,16 @@ void main() {
                         gl.uniform_1_i32(self.loc_is_texture.as_ref(), 1);
                     }
                 }
-                gl.uniform_matrix_4_f32_slice(self.loc_mat_modelview.as_ref(), false, mat_modelview);
-                gl.uniform_matrix_4_f32_slice(self.loc_mat_projection.as_ref(),  false, &mp1);
-                gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, ebo.ebo);
-                gl.draw_elements(
-                    ebo.mode,
-                    ebo.elem_size as i32,
-                    glow::UNSIGNED_INT,
-                    0
+                gl.uniform_matrix_4_f32_slice(
+                    self.loc_mat_modelview.as_ref(),
+                    false,
+                    mat_modelview,
                 );
+                gl.uniform_matrix_4_f32_slice(self.loc_mat_projection.as_ref(), false, &mp1);
+                gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, ebo.ebo);
+                gl.draw_elements(ebo.mode, ebo.elem_size as i32, glow::UNSIGNED_INT, 0);
             }
+            gl.bind_vertex_array(None);
         }
     }
 
@@ -215,11 +218,12 @@ void main() {
             -mp0[10], mp0[11], mp0[12], mp0[13], -mp0[14], mp0[15],
         ];
         unsafe {
+            gl.bind_vertex_array(self.vertex_array);
             gl.use_program(self.program);
-            gl.bind_vertex_array(self.vao);
             gl.uniform_matrix_4_f32_slice(self.loc_mat_modelview.as_ref(), false, mat_modelview);
             gl.uniform_matrix_4_f32_slice(self.loc_mat_projection.as_ref(), false, &mp1);
             gl.draw_arrays(glow::POINTS, 0, (self.num_point) as i32);
+            gl.bind_vertex_array(None);
         }
     }
 
@@ -227,7 +231,12 @@ void main() {
         use glow::HasContext as _;
         unsafe {
             gl.delete_program(self.program.unwrap());
-            gl.delete_vertex_array(self.vao.unwrap());
+            gl.delete_vertex_array(self.vertex_array.unwrap());
         }
+    }
+}
+impl Default for Drawer {
+    fn default() -> Self {
+        Self::new()
     }
 }

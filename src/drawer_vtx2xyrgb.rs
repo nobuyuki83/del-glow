@@ -6,8 +6,6 @@ pub struct Drawer {
 
 impl Drawer {
     pub fn compile_shader(&mut self, gl: &glow::Context) {
-        use glow::HasContext as _;
-
         let shader_version = if cfg!(target_arch = "wasm32") {
             "#version 300 es"
         } else {
@@ -41,14 +39,14 @@ impl Drawer {
         );
         self.program = program;
     }
-    pub fn new(&mut self, gl: &glow::Context, vtx2xyrgb: &[f32]) {
+    pub fn set_vtx2xyrgb(&mut self, gl: &glow::Context, vtx2xyrgb: &[f32]) {
         use glow::HasContext as _;
         unsafe {
             let vbo = gl.create_buffer().expect("Cannot create buffer");
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
             gl.buffer_data_u8_slice(
                 glow::ARRAY_BUFFER,
-                bytemuck::cast_slice(&vtx2xyrgb),
+                bytemuck::cast_slice(vtx2xyrgb),
                 glow::STATIC_DRAW,
             );
 
@@ -66,6 +64,7 @@ impl Drawer {
                 .get_attrib_location(self.program.unwrap(), "rgbIn")
                 .unwrap();
             dbg!(loc_xyz, loc_rgb);
+            //
             gl.vertex_attrib_pointer_f32(
                 loc_xyz,
                 2,

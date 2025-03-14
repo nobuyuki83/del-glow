@@ -25,7 +25,7 @@ fn main() -> eframe::Result {
 
 struct MyApp {
     /// Behind an `Arc<Mutex<…>>` so we can pass it to [`egui::PaintCallback`] and paint later.
-    drawer: Arc<Mutex<del_glow::drawer_array_xyrgb::Drawer>>,
+    drawer: Arc<Mutex<del_glow::drawer_vtx2xyrgb::Drawer>>,
 }
 
 impl MyApp {
@@ -34,7 +34,7 @@ impl MyApp {
             .gl
             .as_ref()
             .expect("You need to run eframe with the glow backend");
-        let mut drawer = del_glow::drawer_array_xyrgb::Drawer {
+        let mut drawer = del_glow::drawer_vtx2xyrgb::Drawer {
             program: None,
             mode: glow::TRIANGLES,
             vertex_array: None,
@@ -43,7 +43,7 @@ impl MyApp {
         let vtx2xyrgb: [f32; 15] = [
             -0.5, -0.5, 1.0, 0.0, 0.0, 0.0, 0.5, 0.0, 1.0, 0.0, 0.5, -0.5, 0.0, 0.0, 1.0,
         ];
-        drawer.new(&gl, &vtx2xyrgb);
+        drawer.set_vtx2xyrgb(&gl, &vtx2xyrgb);
         Self {
             drawer: Arc::new(Mutex::new(drawer)),
         }

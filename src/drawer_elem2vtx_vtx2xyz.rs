@@ -13,7 +13,7 @@ pub struct Drawer {
     program: Option<glow::NativeProgram>,
     pub ndim: usize,
     num_point: usize,
-    vao: Option<glow::NativeVertexArray>,
+    vertex_array: Option<glow::NativeVertexArray>,
     // uniform variables
     loc_color: Option<glow::NativeUniformLocation>,
     loc_mat_modelview: Option<glow::NativeUniformLocation>,
@@ -28,7 +28,7 @@ impl Drawer {
             program: None,
             ndim: 0,
             num_point: 0,
-            vao: None,
+            vertex_array: None,
             loc_color: None, // -1 is the failure flag
             loc_mat_modelview: None,
             loc_mat_projection: None,
@@ -42,7 +42,7 @@ impl Drawer {
             "#version 330"
         };
 
-        let VS_SRC = r#"
+        let vs_src = r#"
 uniform mat4 matMV;
 uniform mat4 matPrj;
 in vec3 position;
@@ -53,7 +53,7 @@ void main() {
 }
 "#;
 
-        let FS_SRC = r#"
+        let fs_src = r#"
 uniform vec3 color;
 out vec4 FragColor;
 
@@ -63,35 +63,30 @@ void main() {
 "#;
 
         unsafe {
-            self.program = crate::compile_shaders(gl, shader_version, VS_SRC, FS_SRC);
+            self.program = crate::compile_shaders(gl, shader_version, vs_src, fs_src);
             self.loc_mat_modelview = gl.get_uniform_location(self.program.unwrap(), "matMV");
             self.loc_mat_projection = gl.get_uniform_location(self.program.unwrap(), "matPrj");
             self.loc_color = gl.get_uniform_location(self.program.unwrap(), "color");
-            {
-                let vao0 = gl.create_vertex_array().unwrap();
-                self.vao = Some(vao0);
-                gl.bind_vertex_array(self.vao);
-            }
+            gl.use_program(None);
+            let vao0 = gl.create_vertex_array().unwrap();
+            self.vertex_array = Some(vao0);
         }
     }
 
-    pub fn add_element<T>(
+    pub fn add_elem2vtx<T>(
         &mut self,
         gl: &glow::Context,
         mode: u32,
-        elem2vtx: &Vec<T>,
+        elem2vtx: &[T],
         color: [f32; 3],
     ) where
         T: 'static + Copy + num_traits::AsPrimitive<u32>,
     {
         let elem2vtx0: Vec<u32> = elem2vtx.iter().map(|i| (*i).as_()).collect();
         unsafe {
-            gl.bind_vertex_array(self.vao);
-            let mut ebo0 = 0_u32;
-            let mut ebo0 = gl.create_buffer().unwrap();
+            gl.bind_vertex_array(self.vertex_array);
+            let ebo0 = gl.create_buffer().unwrap();
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo0));
-            // println!("{:?}", (elem2vtx0.len() * std::mem::size_of::<usize>()) as gl::types::GLsizeiptr);
-            // println!("{:?}", elem2vtx0.as_ptr() as *const _);
             gl.buffer_data_u8_slice(
                 glow::ELEMENT_ARRAY_BUFFER,
                 bytemuck::cast_slice(&elem2vtx0),
@@ -103,22 +98,23 @@ void main() {
                 ebo: Some(ebo0),
                 color,
             });
+            gl.bind_vertex_array(None);
         }
     }
 
-    pub fn update_vertex(&mut self, gl: &glow::Context, vtx_xyz: &Vec<f32>, ndim: usize) {
+    pub fn set_vtx2xyz(&mut self, gl: &glow::Context, vtx2xyz: &[f32], ndim: usize) {
         self.ndim = ndim;
-        self.num_point = vtx_xyz.len() / self.ndim;
+        self.num_point = vtx2xyz.len() / self.ndim;
         unsafe {
-            gl.bind_vertex_array(self.vao);
-            let mut vbo = gl.create_buffer().unwrap();
+            gl.use_program(None);
+            gl.bind_vertex_array(self.vertex_array);
+            let vbo = gl.create_buffer().unwrap();
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
             gl.buffer_data_u8_slice(
                 glow::ARRAY_BUFFER,
-                bytemuck::cast_slice(&vtx_xyz),
+                bytemuck::cast_slice(vtx2xyz),
                 glow::STATIC_DRAW,
             );
-            //
             let pos_attrib = gl
                 .get_attrib_location(self.program.unwrap(), "position")
                 .unwrap();
@@ -131,6 +127,7 @@ void main() {
                 (self.ndim * std::mem::size_of::<f32>()) as i32,
                 0,
             );
+            gl.bind_vertex_array(None);
         }
     }
 
@@ -139,10 +136,8 @@ void main() {
         unsafe {
             // gl.clear_color(1.0, 1.0, 1.0, 1.0);
             // gl.clear(glow::COLOR_BUFFER_BIT);
-            gl.clear(glow::DEPTH_BUFFER_BIT);
-            gl.enable(glow::DEPTH_TEST);
             gl.use_program(self.program);
-            gl.bind_vertex_array(self.vao);
+            gl.bind_vertex_array(self.vertex_array);
             for ebo in &self.ebos {
                 gl.enable(glow::DEPTH_TEST);
                 gl.uniform_3_f32(
@@ -160,6 +155,7 @@ void main() {
                 gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, ebo.ebo);
                 gl.draw_elements(ebo.mode, ebo.elem_size as i32, glow::UNSIGNED_INT, 0);
             }
+            gl.bind_vertex_array(None);
         }
     }
 
@@ -172,11 +168,12 @@ void main() {
         ];
         unsafe {
             gl.use_program(self.program);
-            gl.bind_vertex_array(self.vao);
+            gl.bind_vertex_array(self.vertex_array);
             gl.uniform_3_f32(self.loc_color.as_ref(), 0., 0., 0.);
             gl.uniform_matrix_4_f32_slice(self.loc_mat_modelview.as_ref(), false, mat_modelview);
             gl.uniform_matrix_4_f32_slice(self.loc_mat_projection.as_ref(), false, &mp1);
             gl.draw_arrays(glow::POINTS, 0, self.num_point as i32);
+            gl.bind_vertex_array(None);
         }
     }
 
@@ -184,7 +181,13 @@ void main() {
         use glow::HasContext as _;
         unsafe {
             gl.delete_program(self.program.unwrap());
-            gl.delete_vertex_array(self.vao.unwrap());
+            gl.delete_vertex_array(self.vertex_array.unwrap());
         }
+    }
+}
+
+impl Default for Drawer {
+    fn default() -> Self {
+        Self::new()
     }
 }

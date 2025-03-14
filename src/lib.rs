@@ -1,6 +1,7 @@
-pub mod drawer_array_xyrgb;
-pub mod drawer_mesh;
-pub mod drawer_mesh_tex;
+pub mod drawer_elem2vtx_vtx2xyz;
+pub mod drawer_elem2vtx_vtx2xyz_vtx2uv;
+pub mod drawer_tri2node2xyz_tri2node2rgb;
+pub mod drawer_vtx2xyrgb;
 
 pub fn compile_shaders(
     gl: &glow::Context,

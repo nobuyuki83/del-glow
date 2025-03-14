@@ -6,8 +6,8 @@
 use eframe::{egui, egui_glow, glow};
 
 use egui::mutex::Mutex;
-use std::sync::Arc;
 use glow::HasContext;
+use std::sync::Arc;
 
 fn main() -> eframe::Result {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
@@ -27,11 +27,11 @@ fn main() -> eframe::Result {
 
 struct MyApp {
     /// Behind an `Arc<Mutex<…>>` so we can pass it to [`egui::PaintCallback`] and paint later.
-    drawer: Arc<Mutex<del_glow::drawer_mesh_tex::Drawer>>,
+    drawer: Arc<Mutex<del_glow::drawer_elem2vtx_vtx2xyz_vtx2uv::Drawer>>,
     // mat_modelview: [f32;16],
     mat_projection: [f32; 16],
     trackball: del_geo_core::view_rotation::Trackball,
-    tex_id: Option<glow::NativeTexture>
+    tex_id: Option<glow::NativeTexture>,
 }
 
 impl MyApp {
@@ -52,12 +52,12 @@ impl MyApp {
             .gl
             .as_ref()
             .expect("You need to run eframe with the glow backend");
-        let mut drawer = del_glow::drawer_mesh_tex::Drawer::new();
+        let mut drawer = del_glow::drawer_elem2vtx_vtx2xyz_vtx2uv::Drawer::new();
         drawer.compile_shader(&gl);
-        drawer.update_vertex(&gl, &vtx2xyz, 3);
-        drawer.set_texture_uv(&gl, &vtx2uv);
-        drawer.add_element(&gl, glow::LINES, &edge2vtx, None);
-        drawer.add_element(&gl, glow::TRIANGLES, &tri2vtx, None);
+        drawer.update_vtx2xyz(&gl, &vtx2xyz, 3);
+        drawer.set_vtx2uv(&gl, &vtx2uv);
+        drawer.add_elem2vtx(&gl, glow::LINES, &edge2vtx, None);
+        drawer.add_elem2vtx(&gl, glow::TRIANGLES, &tri2vtx, None);
         //
         let id_tex = unsafe {
             // gl.enable(glow::TEXTURE_2D);
@@ -74,7 +74,7 @@ impl MyApp {
                 0,
                 glow::RGB,
                 glow::UNSIGNED_BYTE,
-                glow::PixelUnpackData::Slice(Some(pix2rgb.as_ref()))
+                glow::PixelUnpackData::Slice(Some(pix2rgb.as_ref())),
             );
             gl.generate_mipmap(glow::TEXTURE_2D);
             id_tex
@@ -84,7 +84,7 @@ impl MyApp {
             // mat_modelview: del_geo_core::mat4_col_major::from_identity(),
             trackball: del_geo_core::view_rotation::Trackball::default(),
             mat_projection: del_geo_core::mat4_col_major::from_identity(),
-            tex_id: Some(id_tex)
+            tex_id: Some(id_tex),
         }
     }
 }

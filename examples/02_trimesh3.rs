@@ -6,8 +6,8 @@
 use eframe::{egui, egui_glow, glow};
 
 use egui::mutex::Mutex;
-use std::sync::Arc;
 use glow::HasContext;
+use std::sync::Arc;
 
 fn main() -> eframe::Result {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
@@ -27,7 +27,7 @@ fn main() -> eframe::Result {
 
 struct MyApp {
     /// Behind an `Arc<Mutex<…>>` so we can pass it to [`egui::PaintCallback`] and paint later.
-    drawer: Arc<Mutex<del_glow::drawer_mesh::Drawer>>,
+    drawer: Arc<Mutex<del_glow::drawer_elem2vtx_vtx2xyz::Drawer>>,
     // mat_modelview: [f32;16],
     mat_projection: [f32; 16],
     trackball: del_geo_core::view_rotation::Trackball,
@@ -35,21 +35,22 @@ struct MyApp {
 
 impl MyApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let gl = cc
-            .gl
-            .as_ref()
-            .expect("You need to run eframe with the glow backend");
-        let mut drawer = del_glow::drawer_mesh::Drawer::new();
-        drawer.compile_shader(&gl);
         let (tri2vtx, vtx2xyz) = {
             let mut obj = del_msh_core::io_obj::WavefrontObj::<usize, f32>::new();
             obj.load("examples/asset/spot_triangulated.obj").unwrap();
             (obj.idx2vtx_xyz, obj.vtx2xyz)
         };
         let edge2vtx = del_msh_core::edge2vtx::from_triangle_mesh(&tri2vtx, vtx2xyz.len() / 3);
-        drawer.update_vertex(&gl, &vtx2xyz, 3);
-        drawer.add_element(&gl, glow::LINES, &edge2vtx, [0.0, 0.0, 0.0]);
-        drawer.add_element(&gl, glow::TRIANGLES, &tri2vtx, [1.0, 0.0, 0.0]);
+        //
+        let gl = cc
+            .gl
+            .as_ref()
+            .expect("You need to run eframe with the glow backend");
+        let mut drawer = del_glow::drawer_elem2vtx_vtx2xyz::Drawer::new();
+        drawer.compile_shader(&gl);
+        drawer.set_vtx2xyz(&gl, &vtx2xyz, 3);
+        drawer.add_elem2vtx(&gl, glow::LINES, &edge2vtx, [0.0, 0.0, 0.0]);
+        drawer.add_elem2vtx(&gl, glow::TRIANGLES, &tri2vtx, [1.0, 0.8, 0.8]);
         Self {
             drawer: Arc::new(Mutex::new(drawer)),
             // mat_modelview: del_geo_core::mat4_col_major::from_identity(),
@@ -102,6 +103,11 @@ impl MyApp {
         let callback = egui::PaintCallback {
             rect,
             callback: std::sync::Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
+                let gl = painter.gl();
+                unsafe {
+                    gl.clear(glow::DEPTH_BUFFER_BIT);
+                    gl.enable(glow::DEPTH_TEST);
+                }
                 rotating_triangle
                     .lock()
                     .draw(painter.gl(), &mat_modelview, &mat_projection);

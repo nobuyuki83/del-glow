@@ -34,14 +34,16 @@ struct MyApp {
     trackball: del_geo_core::view_rotation::Trackball,
     tri2vtx: Vec<u32>,
     vtx2xyz: Vec<f32>,
+    tri2dist: Vec<usize>,
+    tri2flag: Vec<u8>,
+    tri2tri: Vec<u32>,
+    is_updated_tri2flag: bool,
+    gl: Option<Arc<glow::Context>>,
+    cur_dist: Option<usize>,
 }
 
 impl MyApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let gl = cc
-            .gl
-            .as_ref()
-            .expect("You need to run eframe with the glow backend");
         let (tri2vtx, vtx2xyz) = {
             let mut obj = del_msh_core::io_obj::WavefrontObj::<u32, f32>::new();
             obj.load("examples/asset/spot_triangulated.obj").unwrap();
@@ -50,8 +52,19 @@ impl MyApp {
         let num_tri = tri2vtx.len() / 3;
         let tri2node2xyz =
             del_msh_core::unindex::unidex_vertex_attribute_for_triangle_mesh(&tri2vtx, &vtx2xyz, 3);
+        let tri2tri = del_msh_core::elem2elem::from_uniform_mesh(
+            &tri2vtx,
+            3,
+            &[0, 2, 4, 6],
+            &[1, 2, 2, 0, 0, 1],
+            vtx2xyz.len() / 3,
+        );
         assert_eq!(tri2node2xyz.len(), num_tri * 9);
-        let tri2node2rgb = vec![0.9; num_tri * 9];
+        // ---------
+        let gl = cc
+            .gl
+            .as_ref()
+            .expect("You need to run eframe with the glow backend");
         let drawer_edge = {
             let mut drawer_mesh = del_glow::drawer_elem2vtx_vtx2xyz::Drawer::new();
             drawer_mesh.compile_shader(&gl);
@@ -65,6 +78,7 @@ impl MyApp {
             let mut drawer_tri = del_glow::drawer_tri2node2xyz_tri2node2rgb::Drawer::new();
             drawer_tri.compile_shader(&gl);
             drawer_tri.update_tri2node2xyz(&gl, &tri2node2xyz);
+            let tri2node2rgb = vec![0.9; num_tri * 9];
             drawer_tri.update_tri2node2rgb(&gl, &tri2node2rgb);
             drawer_tri
         };
@@ -75,6 +89,12 @@ impl MyApp {
             mat_projection: del_geo_core::mat4_col_major::from_identity(),
             tri2vtx,
             vtx2xyz,
+            tri2tri,
+            tri2dist: vec![0; num_tri],
+            tri2flag: vec![0; num_tri],
+            is_updated_tri2flag: true,
+            gl: Some(gl.clone()),
+            cur_dist: None,
         }
     }
 }
@@ -88,10 +108,12 @@ impl eframe::App for MyApp {
                 ui.hyperlink_to("glow", "https://github.com/grovesNL/glow");
                 ui.label(" (OpenGL).");
             });
+            ui.label("ViewRotate: Alt + ");
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                self.custom_painting(ui);
+                let (id, rect) = ui.allocate_space(ui.available_size());
+                self.handle_event(ui, rect, id);
+                self.custom_painting(ui, rect);
             });
-            ui.label("Drag to rotate!");
         });
     }
 
@@ -103,52 +125,137 @@ impl eframe::App for MyApp {
 }
 
 impl MyApp {
-    fn custom_painting(&mut self, ui: &mut egui::Ui) {
+    fn picking_ray(&self, pos: egui::Pos2, rect: egui::Rect) -> ([f32; 3], [f32; 3]) {
         let mat_modelview = self.trackball.mat4_col_major();
         let mat_projection = self.mat_projection;
         let transform_world2ndc =
             del_geo_core::mat4_col_major::mult_mat_col_major(&mat_projection, &mat_modelview);
         let transform_ndc2world =
             del_geo_core::mat4_col_major::try_inverse(&transform_world2ndc).unwrap();
-        let (rect, response) =
-            ui.allocate_exact_size(egui::Vec2::splat(500.0), egui::Sense::drag());
-        if response.clicked() {
-            if let Some(pos) = response.interact_pointer_pos() {
-                let pos = pos - rect.left_top();
-                let ndc_x = 2. * pos.x / rect.width() - 1.;
-                let ndc_y = 1. - 2. * pos.y / rect.height();
-                let world_stt = del_geo_core::mat4_col_major::transform_homogeneous(
-                    &transform_ndc2world,
-                    &[ndc_x, ndc_y, 1.],
-                )
-                .unwrap();
-                let world_end = del_geo_core::mat4_col_major::transform_homogeneous(
-                    &transform_ndc2world,
-                    &[ndc_x, ndc_y, -1.],
-                )
-                .unwrap();
-                let ray_org = world_stt;
-                let ray_dir = del_geo_core::vec3::sub(&world_end, &world_stt);
-                let res = del_msh_core::trimesh3_search_bruteforce::first_intersection_ray(
-                    &ray_org,
-                    &ray_dir,
-                    &self.tri2vtx,
-                    &self.vtx2xyz,
-                );
-                if let Some((depth, i_tri)) = res {
-                    let pos = del_geo_core::vec3::axpy(depth, &ray_dir, &ray_org);
-                    Some((i_tri as usize, pos))
-                } else {
-                    None
+        let pos = pos - rect.left_top();
+        let ndc_x = 2. * pos.x / rect.width() - 1.;
+        let ndc_y = 1. - 2. * pos.y / rect.height();
+        let world_stt = del_geo_core::mat4_col_major::transform_homogeneous(
+            &transform_ndc2world,
+            &[ndc_x, ndc_y, 1.],
+        )
+        .unwrap();
+        let world_end = del_geo_core::mat4_col_major::transform_homogeneous(
+            &transform_ndc2world,
+            &[ndc_x, ndc_y, -1.],
+        )
+        .unwrap();
+        let ray_org = world_stt;
+        let ray_dir = del_geo_core::vec3::sub(&world_end, &world_stt);
+        (ray_org, ray_dir)
+    }
+    fn handle_event(&mut self, ui: &mut egui::Ui, rect: egui::Rect, id: egui::Id) {
+        let ctx = ui.ctx();
+        if ctx.input(|i0| {
+            i0.pointer.button_pressed(egui::PointerButton::Primary) && i0.modifiers.is_none()
+        }) {
+            // mouse pressed
+            let num_tri = self.tri2dist.len();
+            if let Some(pos) = ctx.pointer_interact_pos() {
+                let (ray_org, ray_dir) = self.picking_ray(pos, rect);
+                if let Some((_depth, i_tri)) =
+                    del_msh_core::trimesh3_search_bruteforce::first_intersection_ray(
+                        &ray_org,
+                        &ray_dir,
+                        &self.tri2vtx,
+                        &self.vtx2xyz,
+                    )
+                {
+                    // hit something
+                    self.tri2flag[i_tri as usize] = 1;
+                    self.tri2dist = del_msh_core::dijkstra::elem2dist_for_uniform_mesh(
+                        i_tri as usize,
+                        &self.tri2tri,
+                        num_tri,
+                    );
+                    self.cur_dist = Some(0);
+                    self.is_updated_tri2flag = true;
                 }
-            } else {
-                None
-            };
+            }
         }
+        if ctx.input(|i0| {
+            i0.pointer.button_released(egui::PointerButton::Primary) && i0.modifiers.is_none()
+        }) {
+            if let Some(cur_dist) = self.cur_dist {
+                self.tri2flag
+                    .iter_mut()
+                    .enumerate()
+                    .for_each(|(i_tri, flg)| {
+                        if self.tri2dist[i_tri] <= cur_dist {
+                            *flg = 1
+                        } else {
+                            *flg = 0
+                        }
+                    });
+            }
+            self.cur_dist = None;
+            self.is_updated_tri2flag = true;
+        }
+        if ctx
+            .input(|i| i.pointer.button_down(egui::PointerButton::Primary) && i.modifiers.is_none())
+        {
+            if let Some(pos) = ctx.pointer_interact_pos() {
+                let (ray_org, ray_dir) = self.picking_ray(pos, rect);
+                if let Some((_depth, i_tri)) =
+                    del_msh_core::trimesh3_search_bruteforce::first_intersection_ray(
+                        &ray_org,
+                        &ray_dir,
+                        &self.tri2vtx,
+                        &self.vtx2xyz,
+                    )
+                {
+                    self.cur_dist = Some(self.tri2dist[i_tri as usize]);
+                    self.is_updated_tri2flag = true;
+                }
+            }
+        }
+        let response = ui.interact(rect, id, egui::Sense::click_and_drag());
+        if ctx.input(|i| i.pointer.button_down(egui::PointerButton::Primary) && i.modifiers.alt) {
+            let xy = response.drag_motion();
+            let dx = 2.0 * xy.x / rect.width() as f32;
+            let dy = -2.0 * xy.y / rect.height() as f32;
+            self.trackball.camera_rotation(dx as f64, dy as f64);
+        }
+    }
+    fn custom_painting(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
+        if self.is_updated_tri2flag {
+            let mut tri2node2rgb: Vec<f32> = self
+                .tri2flag
+                .iter()
+                .flat_map(|&flag| {
+                    if flag == 1 {
+                        [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+                    } else {
+                        [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+                    }
+                })
+                .collect();
+            tri2node2rgb
+                .chunks_mut(9)
+                .enumerate()
+                .for_each(|(i_tri, v)| {
+                    if let Some(cur_dist) = self.cur_dist {
+                        if self.tri2dist[i_tri] <= cur_dist {
+                            v.copy_from_slice(&[1.0, 0.7, 1.0, 1.0, 0.7, 1.0, 1.0, 0.7, 1.0]);
+                        }
+                    }
+                });
+            let gl = self.gl.clone().unwrap();
+            self.drawer_tri
+                .lock()
+                .update_tri2node2rgb(&gl, &tri2node2rgb);
+            self.is_updated_tri2flag = false;
+        }
+        let mat_modelview = self.trackball.mat4_col_major();
+        let mat_projection = self.mat_projection;
         let z_flip = del_geo_core::mat4_col_major::from_diagonal(1., 1., -1., 1.);
         let mat_projection_for_opengl =
             del_geo_core::mat4_col_major::mult_mat_col_major(&z_flip, &mat_projection);
-        // del_geo_core::view_rotation::Trackball::new();
         let drawer_edge = self.drawer_edge.clone();
         let drawer_tri = self.drawer_tri.clone();
         let callback = egui::PaintCallback {
@@ -168,10 +275,5 @@ impl MyApp {
             })),
         };
         ui.painter().add(callback);
-        //
-        let xy = response.drag_motion();
-        let dx = 2.0 * xy.x / rect.width() as f32;
-        let dy = -2.0 * xy.y / rect.height() as f32;
-        self.trackball.camera_rotation(dx as f64, dy as f64);
     }
 }

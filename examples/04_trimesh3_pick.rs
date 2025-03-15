@@ -81,16 +81,13 @@ impl MyApp {
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
-                ui.label("The triangle is being painted using ");
-                ui.hyperlink_to("glow", "https://github.com/grovesNL/glow");
-                ui.label(" (OpenGL).");
-            });
+            ui.label("View Rot: Alt + LeftDrag");
+            ui.label("Pick: LeftPress");
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                self.custom_painting(ui);
+                let (id, rect) = ui.allocate_space(ui.available_size());
+                self.handle_event(ui, rect, id);
+                self.custom_painting(ui, rect);
             });
-            ui.label("Drag to rotate!");
         });
     }
 
@@ -102,32 +99,39 @@ impl eframe::App for MyApp {
 }
 
 impl MyApp {
-    fn custom_painting(&mut self, ui: &mut egui::Ui) {
+    fn picking_ray(&self, pos: egui::Pos2, rect: egui::Rect) -> ([f32; 3], [f32; 3]) {
         let mat_modelview = self.trackball.mat4_col_major();
         let mat_projection = self.mat_projection;
         let transform_world2ndc =
             del_geo_core::mat4_col_major::mult_mat_col_major(&mat_projection, &mat_modelview);
         let transform_ndc2world =
             del_geo_core::mat4_col_major::try_inverse(&transform_world2ndc).unwrap();
-        let (rect, response) =
-            ui.allocate_exact_size(egui::Vec2::splat(500.0), egui::Sense::click_and_drag());
-        if response.clicked() {
-            self.picked_tri = if let Some(pos) = response.interact_pointer_pos() {
-                let pos = pos - rect.left_top();
-                let ndc_x = 2. * pos.x / rect.width() - 1.;
-                let ndc_y = 1. - 2. * pos.y / rect.height();
-                let world_stt = del_geo_core::mat4_col_major::transform_homogeneous(
-                    &transform_ndc2world,
-                    &[ndc_x, ndc_y, 1.],
-                )
-                .unwrap();
-                let world_end = del_geo_core::mat4_col_major::transform_homogeneous(
-                    &transform_ndc2world,
-                    &[ndc_x, ndc_y, -1.],
-                )
-                .unwrap();
-                let ray_org = world_stt;
-                let ray_dir = del_geo_core::vec3::sub(&world_end, &world_stt);
+        let pos = pos - rect.left_top();
+        let ndc_x = 2. * pos.x / rect.width() - 1.;
+        let ndc_y = 1. - 2. * pos.y / rect.height();
+        let world_stt = del_geo_core::mat4_col_major::transform_homogeneous(
+            &transform_ndc2world,
+            &[ndc_x, ndc_y, 1.],
+        )
+        .unwrap();
+        let world_end = del_geo_core::mat4_col_major::transform_homogeneous(
+            &transform_ndc2world,
+            &[ndc_x, ndc_y, -1.],
+        )
+        .unwrap();
+        let ray_org = world_stt;
+        let ray_dir = del_geo_core::vec3::sub(&world_end, &world_stt);
+        (ray_org, ray_dir)
+    }
+
+    fn handle_event(&mut self, ui: &mut egui::Ui, rect: egui::Rect, id: egui::Id) {
+        let response = ui.interact(rect, id, egui::Sense::drag());
+        let ctx = ui.ctx();
+        if ctx.input(|i| {
+            i.pointer.button_pressed(egui::PointerButton::Primary) && i.modifiers.is_none()
+        }) {
+            self.picked_tri = if let Some(pos) = ctx.pointer_interact_pos() {
+                let (ray_org, ray_dir) = self.picking_ray(pos, rect);
                 let res = del_msh_core::trimesh3_search_bruteforce::first_intersection_ray(
                     &ray_org,
                     &ray_dir,
@@ -144,13 +148,24 @@ impl MyApp {
                 None
             };
         }
+        if ctx.input(|i| i.pointer.button_down(egui::PointerButton::Primary) && i.modifiers.alt) {
+            let xy = response.drag_motion();
+            let dx = 2.0 * xy.x / rect.width() as f32;
+            let dy = -2.0 * xy.y / rect.height() as f32;
+            self.trackball.camera_rotation(dx as f64, dy as f64);
+        }
+    }
+
+    fn custom_painting(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
+        let mat_modelview = self.trackball.mat4_col_major();
+        let mat_projection = self.mat_projection;
         let z_flip = del_geo_core::mat4_col_major::from_diagonal(1., 1., -1., 1.);
         let mat_projection_for_opengl =
             del_geo_core::mat4_col_major::mult_mat_col_major(&z_flip, &mat_projection);
         // del_geo_core::view_rotation::Trackball::new();
         let drawer_mesh = self.drawer_mesh.clone();
         let drawer_sphere = self.drawer_sphere.clone();
-        let mat_modelview_for_sphere = if let Some((i_tri, pos)) = self.picked_tri {
+        let mat_modelview_for_sphere = if let Some((_i_tri, pos)) = self.picked_tri {
             let mat = del_geo_core::mat4_col_major::mult_mat_col_major(
                 &mat_modelview,
                 &del_geo_core::mat4_col_major::from_translate(&pos),
@@ -180,10 +195,5 @@ impl MyApp {
             })),
         };
         ui.painter().add(callback);
-        //
-        let xy = response.drag_motion();
-        let dx = 2.0 * xy.x / rect.width() as f32;
-        let dy = -2.0 * xy.y / rect.height() as f32;
-        self.trackball.camera_rotation(dx as f64, dy as f64);
     }
 }

@@ -134,7 +134,6 @@ impl Drawer {
     }
 }
 
-
 impl Default for Drawer {
     fn default() -> Self {
         Self::new()

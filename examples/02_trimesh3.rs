@@ -63,16 +63,12 @@ impl MyApp {
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
-                ui.label("The triangle is being painted using ");
-                ui.hyperlink_to("glow", "https://github.com/grovesNL/glow");
-                ui.label(" (OpenGL).");
-            });
+            ui.label("Rotate: Alt + LeftDrag");
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                self.custom_painting(ui);
+                let (id, rect) = ui.allocate_space(ui.available_size());
+                self.handle_event(ui, rect, id);
+                self.custom_painting(ui, rect);
             });
-            ui.label("Drag to rotate!");
         });
     }
 
@@ -84,22 +80,24 @@ impl eframe::App for MyApp {
 }
 
 impl MyApp {
-    fn custom_painting(&mut self, ui: &mut egui::Ui) {
-        let (rect, response) =
-            ui.allocate_exact_size(egui::Vec2::splat(500.0), egui::Sense::drag());
+    fn handle_event(&mut self, ui: &mut egui::Ui, rect: egui::Rect, id: egui::Id) {
+        let response = ui.interact(rect, id, egui::Sense::drag());
+        let ctx = ui.ctx();
+        if ctx.input(|i| i.pointer.button_down(egui::PointerButton::Primary) && i.modifiers.alt) {
+            let xy = response.drag_motion();
+            let dx = 2.0 * xy.x / rect.width() as f32;
+            let dy = -2.0 * xy.y / rect.height() as f32;
+            self.trackball.camera_rotation(dx as f64, dy as f64);
+        }
+    }
+    fn custom_painting(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
         // Clone locals so we can move them into the paint callback:
-
-        let xy = response.drag_motion();
-        let dx = 2.0 * xy.x / rect.width() as f32;
-        let dy = -2.0 * xy.y / rect.height() as f32;
-        self.trackball.camera_rotation(dx as f64, dy as f64);
-        let rotating_triangle = self.drawer.clone();
         let mat_modelview = self.trackball.mat4_col_major();
         let mat_projection = self.mat_projection;
         let z_flip = del_geo_core::mat4_col_major::from_diagonal(1., 1., -1., 1.);
-        let mat_projection =
+        let mat_projection_for_opengl =
             del_geo_core::mat4_col_major::mult_mat_col_major(&z_flip, &mat_projection);
-        del_geo_core::view_rotation::Trackball::new();
+        let drawer = self.drawer.clone();
         let callback = egui::PaintCallback {
             rect,
             callback: std::sync::Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
@@ -108,9 +106,9 @@ impl MyApp {
                     gl.clear(glow::DEPTH_BUFFER_BIT);
                     gl.enable(glow::DEPTH_TEST);
                 }
-                rotating_triangle
+                drawer
                     .lock()
-                    .draw(painter.gl(), &mat_modelview, &mat_projection);
+                    .draw(painter.gl(), &mat_modelview, &mat_projection_for_opengl);
             })),
         };
         ui.painter().add(callback);

@@ -59,10 +59,11 @@ impl eframe::App for MyApp {
                 ui.hyperlink_to("glow", "https://github.com/grovesNL/glow");
                 ui.label(" (OpenGL).");
             });
-            egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                self.custom_painting(ui);
-            });
             ui.label("Drag to rotate!");
+            egui::Frame::canvas(ui.style()).show(ui, |ui| {
+                let (id, rect) = ui.allocate_space(ui.available_size());
+                self.custom_painting(ui, rect);
+            });
         });
     }
 
@@ -74,15 +75,13 @@ impl eframe::App for MyApp {
 }
 
 impl MyApp {
-    fn custom_painting(&mut self, ui: &mut egui::Ui) {
-        let (rect, _response) =
-            ui.allocate_exact_size(egui::Vec2::splat(500.0), egui::Sense::drag());
+    fn custom_painting(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
         // Clone locals so we can move them into the paint callback:
-        let rotating_triangle = self.drawer.clone();
+        let drawer = self.drawer.clone();
         let callback = egui::PaintCallback {
             rect,
             callback: std::sync::Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
-                rotating_triangle.lock().paint(painter.gl());
+                drawer.lock().paint(painter.gl());
             })),
         };
         ui.painter().add(callback);

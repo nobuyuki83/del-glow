@@ -29,7 +29,6 @@ struct MyApp {
     /// Behind an `Arc<Mutex<…>>` so we can pass it to [`egui::PaintCallback`] and paint later.
     drawer_mesh: Arc<Mutex<del_glow::drawer_elem2vtx_vtx2xyz::Drawer>>,
     drawer_sphere: Arc<Mutex<del_glow::drawer_elem2vtx_vtx2xyz::Drawer>>,
-    // mat_modelview: [f32;16],
     mat_projection: [f32; 16],
     trackball: del_geo_core::view_rotation::Trackball,
     tri2vtx: Vec<u32>,
@@ -85,6 +84,7 @@ impl eframe::App for MyApp {
             ui.label("Pick: LeftPress");
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
                 let (id, rect) = ui.allocate_space(ui.available_size());
+                let asp = rect.aspect_ratio();
                 self.handle_event(ui, rect, id);
                 self.custom_painting(ui, rect);
             });

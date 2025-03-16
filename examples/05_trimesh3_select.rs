@@ -102,13 +102,11 @@ impl MyApp {
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
-                ui.label("The triangle is being painted using ");
-                ui.hyperlink_to("glow", "https://github.com/grovesNL/glow");
-                ui.label(" (OpenGL).");
-            });
-            ui.label("ViewRotate: Alt + ");
+            ui.label("ViewRotate: Alt + LeftDrag");
+            if ui.button("clear").clicked() {
+                self.tri2flag.iter_mut().for_each(|v| *v = 0);
+                self.is_updated_tri2flag = true;
+            }
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
                 let (id, rect) = ui.allocate_space(ui.available_size());
                 self.handle_event(ui, rect, id);
@@ -189,7 +187,7 @@ impl MyApp {
                         if self.tri2dist[i_tri] <= cur_dist {
                             *flg = 1
                         } else {
-                            *flg = 0
+                            // *flg = 0
                         }
                     });
             }

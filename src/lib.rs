@@ -1,3 +1,5 @@
+pub mod drawer_circle2;
+pub mod drawer_edge2;
 pub mod drawer_elem2vtx_vtx2xyz;
 pub mod drawer_elem2vtx_vtx2xyz_vtx2uv;
 pub mod drawer_tri2node2xyz_tri2node2rgb;

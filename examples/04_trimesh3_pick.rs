@@ -84,7 +84,6 @@ impl eframe::App for MyApp {
             ui.label("Pick: LeftPress");
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
                 let (id, rect) = ui.allocate_space(ui.available_size());
-                let asp = rect.aspect_ratio();
                 self.handle_event(ui, rect, id);
                 self.custom_painting(ui, rect);
             });

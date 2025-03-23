@@ -61,7 +61,7 @@ impl eframe::App for MyApp {
             });
             ui.label("Drag to rotate!");
             egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                let (id, rect) = ui.allocate_space(ui.available_size());
+                let (_id, rect) = ui.allocate_space(ui.available_size());
                 self.custom_painting(ui, rect);
             });
         });

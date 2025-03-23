@@ -184,6 +184,10 @@ void main() {
             gl.delete_vertex_array(self.vertex_array.unwrap());
         }
     }
+
+    pub fn set_color(&mut self, i_ebo: usize, rgb: &[f32; 3]) {
+        self.ebos[i_ebo].color = *rgb;
+    }
 }
 
 impl Default for Drawer {

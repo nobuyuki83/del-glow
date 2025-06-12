@@ -30,14 +30,14 @@ struct MyApp {
     drawer: Arc<Mutex<del_glow::drawer_elem2vtx_vtx2xyz_vtx2uv::Drawer>>,
     // mat_modelview: [f32;16],
     mat_projection: [f32; 16],
-    trackball: del_geo_core::view_rotation::Trackball,
+    trackball: del_geo_core::view_rotation::Trackball<f32>,
     tex_id: Option<glow::NativeTexture>,
 }
 
 impl MyApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let (tri2vtx, vtx2xyz, vtx2uv) = {
-            let mut obj = del_msh_core::io_obj::WavefrontObj::<usize, f32>::new();
+            let mut obj = del_msh_cpu::io_obj::WavefrontObj::<usize, f32>::new();
             obj.load("examples/asset/spot_triangulated.obj").unwrap();
             obj.unified_xyz_uv_as_trimesh()
         };
@@ -46,7 +46,7 @@ impl MyApp {
         let pix2rgb = pix2rgb.decode().unwrap().to_rgb8();
         let pix2rgb = image::imageops::flip_vertical(&pix2rgb);
         println!("{:?}", pix2rgb.dimensions());
-        let edge2vtx = del_msh_core::edge2vtx::from_triangle_mesh(&tri2vtx, vtx2xyz.len() / 3);
+        let edge2vtx = del_msh_cpu::edge2vtx::from_triangle_mesh(&tri2vtx, vtx2xyz.len() / 3);
         // gl start from here
         let gl = cc
             .gl
@@ -116,7 +116,7 @@ impl MyApp {
             let xy = response.drag_motion();
             let dx = 2.0 * xy.x / rect.width() as f32;
             let dy = -2.0 * xy.y / rect.height() as f32;
-            self.trackball.camera_rotation(dx as f64, dy as f64);
+            self.trackball.camera_rotation(dx, dy);
         }
     }
 

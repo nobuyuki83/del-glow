@@ -30,7 +30,7 @@ struct MyApp {
     drawer_mesh: Arc<Mutex<del_glow::drawer_elem2vtx_vtx2xyz::Drawer>>,
     drawer_sphere: Arc<Mutex<del_glow::drawer_elem2vtx_vtx2xyz::Drawer>>,
     mat_projection: [f32; 16],
-    trackball: del_geo_core::view_rotation::Trackball,
+    trackball: del_geo_core::view_rotation::Trackball<f32>,
     tri2vtx: Vec<u32>,
     vtx2xyz: Vec<f32>,
     picked_tri: Option<(usize, [f32; 3])>,
@@ -43,14 +43,14 @@ impl MyApp {
             .as_ref()
             .expect("You need to run eframe with the glow backend");
         let (tri2vtx, vtx2xyz) = {
-            let mut obj = del_msh_core::io_obj::WavefrontObj::<u32, f32>::new();
+            let mut obj = del_msh_cpu::io_obj::WavefrontObj::<u32, f32>::new();
             obj.load("examples/asset/spot_triangulated.obj").unwrap();
             (obj.idx2vtx_xyz, obj.vtx2xyz)
         };
         let drawer_mesh = {
             let mut drawer_mesh = del_glow::drawer_elem2vtx_vtx2xyz::Drawer::new();
             drawer_mesh.compile_shader(&gl);
-            let edge2vtx = del_msh_core::edge2vtx::from_triangle_mesh(&tri2vtx, vtx2xyz.len() / 3);
+            let edge2vtx = del_msh_cpu::edge2vtx::from_triangle_mesh(&tri2vtx, vtx2xyz.len() / 3);
             drawer_mesh.set_vtx2xyz(&gl, &vtx2xyz, 3);
             drawer_mesh.add_elem2vtx(&gl, glow::LINES, &edge2vtx, [0.0, 0.0, 0.0]);
             drawer_mesh.add_elem2vtx(&gl, glow::TRIANGLES, &tri2vtx, [0.8, 0.8, 0.9]);
@@ -60,7 +60,7 @@ impl MyApp {
             let mut drawer_sphere = del_glow::drawer_elem2vtx_vtx2xyz::Drawer::new();
             drawer_sphere.compile_shader(&gl);
             let (tri2vtx, vtx2xyz) =
-                del_msh_core::trimesh3_primitive::sphere_yup::<u32, f32>(0.1, 32, 32);
+                del_msh_cpu::trimesh3_primitive::sphere_yup::<u32, f32>(0.1, 32, 32);
             drawer_sphere.set_vtx2xyz(&gl, &vtx2xyz, 3);
             drawer_sphere.add_elem2vtx(&gl, glow::TRIANGLES, &tri2vtx, [1.0, 0.5, 0.5]);
             drawer_sphere
@@ -70,7 +70,7 @@ impl MyApp {
             drawer_sphere: Arc::new(Mutex::new(drawer_sphere)),
             trackball: del_geo_core::view_rotation::Trackball::default(),
             mat_projection: del_geo_core::mat4_col_major::from_identity(),
-            tri2vtx,
+            tri2vtx: tri2vtx.to_vec(),
             vtx2xyz,
             picked_tri: None,
         }
@@ -131,7 +131,7 @@ impl MyApp {
         }) {
             self.picked_tri = if let Some(pos) = ctx.pointer_interact_pos() {
                 let (ray_org, ray_dir) = self.picking_ray(pos, rect);
-                let res = del_msh_core::trimesh3_search_bruteforce::first_intersection_ray(
+                let res = del_msh_cpu::trimesh3_search_bruteforce::first_intersection_ray(
                     &ray_org,
                     &ray_dir,
                     &self.tri2vtx,
@@ -151,7 +151,7 @@ impl MyApp {
             let xy = response.drag_motion();
             let dx = 2.0 * xy.x / rect.width() as f32;
             let dy = -2.0 * xy.y / rect.height() as f32;
-            self.trackball.camera_rotation(dx as f64, dy as f64);
+            self.trackball.camera_rotation(dx, dy);
         }
     }
 

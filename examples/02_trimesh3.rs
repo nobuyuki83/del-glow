@@ -30,17 +30,17 @@ struct MyApp {
     drawer: Arc<Mutex<del_glow::drawer_elem2vtx_vtx2xyz::Drawer>>,
     // mat_modelview: [f32;16],
     mat_projection: [f32; 16],
-    trackball: del_geo_core::view_rotation::Trackball,
+    trackball: del_geo_core::view_rotation::Trackball<f32>,
 }
 
 impl MyApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let (tri2vtx, vtx2xyz) = {
-            let mut obj = del_msh_core::io_obj::WavefrontObj::<usize, f32>::new();
+            let mut obj = del_msh_cpu::io_obj::WavefrontObj::<usize, f32>::new();
             obj.load("examples/asset/spot_triangulated.obj").unwrap();
             (obj.idx2vtx_xyz, obj.vtx2xyz)
         };
-        let edge2vtx = del_msh_core::edge2vtx::from_triangle_mesh(&tri2vtx, vtx2xyz.len() / 3);
+        let edge2vtx = del_msh_cpu::edge2vtx::from_triangle_mesh(&tri2vtx, vtx2xyz.len() / 3);
         //
         let gl = cc
             .gl
@@ -87,7 +87,7 @@ impl MyApp {
             let xy = response.drag_motion();
             let dx = 2.0 * xy.x / rect.width() as f32;
             let dy = -2.0 * xy.y / rect.height() as f32;
-            self.trackball.camera_rotation(dx as f64, dy as f64);
+            self.trackball.camera_rotation(dx, dy);
         }
     }
     fn custom_painting(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {

@@ -31,7 +31,7 @@ struct MyApp {
     drawer_tri: Arc<Mutex<del_glow::drawer_tri2node2xyz_tri2node2rgb::Drawer>>,
     // mat_modelview: [f32;16],
     mat_projection: [f32; 16],
-    trackball: del_geo_core::view_rotation::Trackball,
+    trackball: del_geo_core::view_rotation::Trackball<f32>,
     tri2vtx: Vec<u32>,
     vtx2xyz: Vec<f32>,
     tri2dist: Vec<usize>,
@@ -45,14 +45,14 @@ struct MyApp {
 impl MyApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let (tri2vtx, vtx2xyz) = {
-            let mut obj = del_msh_core::io_obj::WavefrontObj::<u32, f32>::new();
+            let mut obj = del_msh_cpu::io_obj::WavefrontObj::<u32, f32>::new();
             obj.load("examples/asset/spot_triangulated.obj").unwrap();
             (obj.idx2vtx_xyz, obj.vtx2xyz)
         };
         let num_tri = tri2vtx.len() / 3;
         let tri2node2xyz =
-            del_msh_core::unindex::unidex_vertex_attribute_for_triangle_mesh(&tri2vtx, &vtx2xyz, 3);
-        let tri2tri = del_msh_core::elem2elem::from_uniform_mesh(
+            del_msh_cpu::unindex::unidex_vertex_attribute_for_triangle_mesh(&tri2vtx, &vtx2xyz, 3);
+        let tri2tri = del_msh_cpu::elem2elem::from_uniform_mesh(
             &tri2vtx,
             3,
             &[0, 2, 4, 6],
@@ -68,7 +68,7 @@ impl MyApp {
         let drawer_edge = {
             let mut drawer_mesh = del_glow::drawer_elem2vtx_vtx2xyz::Drawer::new();
             drawer_mesh.compile_shader(&gl);
-            let edge2vtx = del_msh_core::edge2vtx::from_triangle_mesh(&tri2vtx, vtx2xyz.len() / 3);
+            let edge2vtx = del_msh_cpu::edge2vtx::from_triangle_mesh(&tri2vtx, vtx2xyz.len() / 3);
             drawer_mesh.set_vtx2xyz(&gl, &vtx2xyz, 3);
             drawer_mesh.add_elem2vtx(&gl, glow::LINES, &edge2vtx, [0.0, 0.0, 0.0]);
             // drawer_mesh.add_element(&gl, glow::TRIANGLES, &tri2vtx, [0.8, 0.8, 0.9]);
@@ -157,7 +157,7 @@ impl MyApp {
             if let Some(pos) = ctx.pointer_interact_pos() {
                 let (ray_org, ray_dir) = self.picking_ray(pos, rect);
                 if let Some((_depth, i_tri)) =
-                    del_msh_core::trimesh3_search_bruteforce::first_intersection_ray(
+                    del_msh_cpu::trimesh3_search_bruteforce::first_intersection_ray(
                         &ray_org,
                         &ray_dir,
                         &self.tri2vtx,
@@ -166,7 +166,7 @@ impl MyApp {
                 {
                     // hit something
                     self.tri2flag[i_tri as usize] = 1;
-                    self.tri2dist = del_msh_core::dijkstra::elem2dist_for_uniform_mesh(
+                    self.tri2dist = del_msh_cpu::dijkstra::elem2dist_for_uniform_mesh(
                         i_tri as usize,
                         &self.tri2tri,
                         num_tri,
@@ -200,7 +200,7 @@ impl MyApp {
             if let Some(pos) = ctx.pointer_interact_pos() {
                 let (ray_org, ray_dir) = self.picking_ray(pos, rect);
                 if let Some((_depth, i_tri)) =
-                    del_msh_core::trimesh3_search_bruteforce::first_intersection_ray(
+                    del_msh_cpu::trimesh3_search_bruteforce::first_intersection_ray(
                         &ray_org,
                         &ray_dir,
                         &self.tri2vtx,
@@ -217,7 +217,7 @@ impl MyApp {
             let xy = response.drag_motion();
             let dx = 2.0 * xy.x / rect.width() as f32;
             let dy = -2.0 * xy.y / rect.height() as f32;
-            self.trackball.camera_rotation(dx as f64, dy as f64);
+            self.trackball.camera_rotation(dx as f32, dy as f32);
         }
     }
     fn custom_painting(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {

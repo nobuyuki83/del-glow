@@ -51,7 +51,7 @@ struct MyApp {
 impl MyApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let vtx2xy_inside = vec![0.0, 0.0, 0.5, 0.0, 0.5, 0.1, 0.0, 0.1];
-        let vtx2xy_outside = del_msh_core::polyloop2::from_circle(0.8, 32);
+        let vtx2xy_outside = del_msh_cpu::polyloop2::from_circle(0.8, 32);
         let geo = Geometry {
             vtx2xy_inside,
             vtx2xy_outside,
@@ -118,7 +118,7 @@ impl MyApp {
                 {
                     self.picked_object = VtxInside(i_vtx);
                 } else {
-                    if del_msh_core::polyloop2::is_include_a_point(&geo.vtx2xy_inside, &pos_ndc) {
+                    if del_msh_cpu::polyloop2::is_include_a_point(&geo.vtx2xy_inside, &pos_ndc) {
                         self.picked_object = FaceInside;
                     }
                 }
@@ -157,7 +157,7 @@ impl MyApp {
             }
         }
         if self.is_updated_geometry {
-            self.penetration = del_msh_core::polyloop2::maximum_penetration_of_included_point2s(
+            self.penetration = del_msh_cpu::polyloop2::maximum_penetration_of_included_point2s(
                 &geo.vtx2xy_outside,
                 &geo.vtx2xy_inside,
             );

@@ -20,7 +20,7 @@ impl Drawer {
 
     pub fn compile_shader(&mut self, gl: &glow::Context) {
         self.drawer_quad.compile_shader(gl);
-        let (tri2vtx, vtx2xy) = del_msh_core::trimesh2::from_circle(1.0, 32);
+        let (tri2vtx, vtx2xy) = del_msh_cpu::trimesh2::from_circle(1.0, 32);
         self.drawer_quad
             .add_elem2vtx(gl, glow::TRIANGLES, &tri2vtx, [0., 0., 0.]);
         self.drawer_quad.set_vtx2xyz(gl, &vtx2xy, 2);

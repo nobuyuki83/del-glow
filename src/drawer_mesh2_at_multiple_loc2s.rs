@@ -24,8 +24,8 @@ impl Drawer {
 
     pub fn add_mesh2(&mut self, gl: &glow::Context, tri2vtx: &[usize], vtx2xy: &[f32]) {
         self.drawer_quad
-            .add_elem2vtx(gl, glow::TRIANGLES, &tri2vtx, [0., 0., 0.]);
-        self.drawer_quad.set_vtx2xyz(gl, &vtx2xy, 2);
+            .add_elem2vtx(gl, glow::TRIANGLES, tri2vtx, [0., 0., 0.]);
+        self.drawer_quad.set_vtx2xyz(gl, vtx2xy, 2);
     }
 
     pub fn destroy(&self, gl: &glow::Context) {

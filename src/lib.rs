@@ -4,6 +4,7 @@ pub mod drawer_elem2vtx_vtx2xyz_vtx2uv;
 pub mod drawer_mesh2_at_multiple_loc2s;
 pub mod drawer_tri2node2xyz_tri2node2rgb;
 pub mod drawer_vtx2xyrgb;
+pub mod drawer_vtx2xyz;
 
 pub fn compile_shaders(
     gl: &glow::Context,
